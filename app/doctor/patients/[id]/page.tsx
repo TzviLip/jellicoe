@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
@@ -56,7 +56,7 @@ type Submission = {
 
 function sanitiseHtml(html: string): string {
   // Strip any validation warning comments before display
-  const stripped = html.replace(/<!--.*?-->/gs, '').trim()
+  const stripped = html.replace(/<!--[\s\S]*?-->/g, '').trim()
 
   // Basic tag allowlist — remove anything that could execute
   return stripped
@@ -91,7 +91,7 @@ function RegenerateModal({
       <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl">
         <h3 className="text-lg font-semibold text-slate-800 mb-2">Regenerate report?</h3>
         <p className="text-sm text-slate-500 mb-6">
-          This will replace the current AI draft with a newly generated version.
+          This will ask the AI to write a formal clinical letter using the patient data.
           Your clinical commentary will not be affected.
         </p>
         <div className="flex gap-3">
@@ -185,7 +185,8 @@ function EmailModal({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function DoctorPatientPage({ params }: { params: { id: string } }) {
+export default function DoctorPatientPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
 
@@ -214,7 +215,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase
-        .from('patient_submissions').select('*').eq('id', params.id).single()
+        .from('patient_submissions').select('*').eq('id', id).single()
       if (data) {
         setSubmission(data as Submission)
         setFinalised(data.status === 'complete')
@@ -225,7 +226,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
       setLoading(false)
     }
     load()
-  }, [params.id])
+  }, [id])
 
   // ── Poll while report is generating ─────────────────────────────────────────
 
@@ -238,21 +239,23 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
       const { data } = await supabase
         .from('patient_submissions')
         .select('report_html, report_status')
-        .eq('id', params.id)
+        .eq('id', id)
         .single()
 
-      if (data?.report_status === 'ready' && data?.report_html) {
-        setSubmission(prev => prev ? { ...prev, report_html: data.report_html, report_status: 'ready' } : prev)
-        setValidationWarning(hasValidationWarning(data.report_html))
-        clearInterval(interval)
-      } else if (data?.report_status === 'failed') {
-        setSubmission(prev => prev ? { ...prev, report_status: 'failed' } : prev)
+      const done = ['ready', 'fallback', 'failed'].includes(data?.report_status ?? '')
+      if (done) {
+        setSubmission(prev => prev ? {
+          ...prev,
+          report_html: data?.report_html ?? prev.report_html,
+          report_status: data?.report_status ?? prev.report_status,
+        } : prev)
+        if (data?.report_html) setValidationWarning(hasValidationWarning(data.report_html))
         clearInterval(interval)
       }
     }, 4000)
 
     return () => clearInterval(interval)
-  }, [submission?.report_status, params.id])
+  }, [submission?.report_status, id])
 
   // ── Save ─────────────────────────────────────────────────────────────────────
 
@@ -262,13 +265,13 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: params.id,
+        id: id,
         report_html: mainReportRef.current?.innerHTML ?? submission?.report_html ?? '',
         doctor_report: doctorReportRef.current?.innerHTML ?? '',
       }),
     })
     setSaving(false)
-  }, [params.id, submission?.report_html])
+  }, [id, submission?.report_html])
 
   // ── Regenerate ───────────────────────────────────────────────────────────────
 
@@ -283,7 +286,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
     const res = await fetch('/api/generate-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ submissionId: params.id, force: true }),
+      body: JSON.stringify({ submissionId: id, force: true }),
     })
 
     setRegenerating(false)
@@ -304,7 +307,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
     await fetch('/api/doctor/finalise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: params.id }),
+      body: JSON.stringify({ id: id }),
     })
     setFinalised(true)
     setFinalising(false)
@@ -318,7 +321,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: params.id,
+        id: id,
         report_html: mainReportRef.current?.innerHTML ?? submission?.report_html ?? '',
         doctor_report: doctorReportRef.current?.innerHTML ?? submission?.doctor_report ?? '',
         patient_name: submission?.full_name,
@@ -343,7 +346,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: params.id,
+        id: id,
         to,
         report_html: mainReportRef.current?.innerHTML ?? submission?.report_html ?? '',
         doctor_report: doctorReportRef.current?.innerHTML ?? submission?.doctor_report ?? '',
@@ -361,6 +364,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
 
   const isGenerating = !submission.report_html || submission.report_status === 'generating'
   const isFailed     = submission.report_status === 'failed'
+  const isFallback   = submission.report_status === 'fallback'
   const safeHtml     = submission.report_html ? sanitiseHtml(submission.report_html) : ''
 
   return (
@@ -437,12 +441,12 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
         </div>
       )}
 
-      {/* ── Failed banner ────────────────────────────────────────────────────── */}
+      {/* ── Failed banner (no report at all) ──────────────────────────────────── */}
       {isFailed && (
         <div className="mb-6 px-5 py-5 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-red-800">Report generation failed.</p>
-            <p className="text-xs text-red-600 mt-0.5">This can happen if the AI service was temporarily unavailable.</p>
+            <p className="text-xs text-red-600 mt-0.5">The AI service was unavailable. Try again when ready.</p>
           </div>
           <button
             onClick={() => setShowRegenerate(true)}
@@ -450,6 +454,26 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
             style={{ backgroundColor: '#1e3a5f' }}
           >
             Try again
+          </button>
+        </div>
+      )}
+
+      {/* ── Fallback banner (structured summary shown, AI retry available) ────── */}
+      {isFallback && (
+        <div className="mb-6 px-5 py-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-amber-900">AI generation failed — structured summary shown below</p>
+            <p className="text-xs text-amber-700 mt-1">
+              All clinical data is present and the report can be downloaded or emailed as-is.
+              You can retry AI generation when ready — it will replace the summary with a written letter.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowRegenerate(true)}
+            className="px-4 py-2 text-sm font-semibold text-amber-900 bg-amber-100 border border-amber-300
+                       rounded-xl flex-shrink-0 hover:bg-amber-200 transition-colors whitespace-nowrap"
+          >
+            Retry AI
           </button>
         </div>
       )}
@@ -481,7 +505,7 @@ export default function DoctorPatientPage({ params }: { params: { id: string } }
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
-              AI-generated draft
+              {isFallback ? 'Structured summary' : 'AI-generated draft'}
             </h2>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-400">Click anywhere to edit</span>

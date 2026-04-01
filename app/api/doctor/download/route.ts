@@ -13,10 +13,21 @@ export async function POST(req: NextRequest) {
   }
 
   const practiceSettings = await getPracticeSettings()
-  const buffer = await buildDocxBuffer({ practiceSettings, report_html, doctor_report, patient_name, patient_id })
+  const buffer = await buildDocxBuffer({
+    practiceSettings,
+    report_html,
+    doctor_report,
+    patient_name,
+    patient_id,
+    signingDoctorId: auth.user.id, // sign as the logged-in doctor
+  })
 
   const admin = createAdminClient()
-  await admin.from('audit_log').insert({ user_id: auth.user.id, action: 'doctor_downloaded', submission_id: id })
+  await admin.from('audit_log').insert({
+    user_id: auth.user.id,
+    action: 'doctor_downloaded',
+    submission_id: id,
+  })
 
   return new NextResponse(buffer, {
     headers: {

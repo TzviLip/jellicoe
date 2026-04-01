@@ -1,5 +1,3 @@
-// Core report generation logic — importable server-side without HTTP
-// Used by both the API route (doctor-triggered) and the radiographer submit route (background)
 import 'server-only'
 import { createAdminClient } from './supabase.server'
 
@@ -41,8 +39,29 @@ export async function generateReport(submissionId: string): Promise<void> {
   }
 
   if (!reportHtml) {
-    await admin.from('patient_submissions').update({ report_status: 'failed' }).eq('id', submissionId)
-    throw new Error('Generation failed after retries')
+    // AI failed — generate a structured fallback so the doctor always has something
+    console.warn('AI generation failed — saving structured fallback report')
+    const fallback = buildFallbackReport(s)
+    await admin
+      .from('patient_submissions')
+      .update({ report_html: fallback, report_status: 'fallback' })
+      .eq('id', submissionId)
+
+    await admin.from('audit_log').insert({
+      action: 'ai_report_fallback',
+      submission_id: submissionId,
+      detail: { attempts: attempt },
+    })
+
+    // Notify doctors with a note that it's a structured summary
+    await sendDoctorNotification(
+      submissionId,
+      String(s.full_name ?? ''),
+      String(s.id_number ?? ''),
+      (s.consultation_type as string[]) ?? [],
+      'fallback',
+    ).catch((err: unknown) => console.error('Doctor fallback notification failed:', err))
+    return
   }
 
   await admin
@@ -55,9 +74,199 @@ export async function generateReport(submissionId: string): Promise<void> {
     submission_id: submissionId,
     detail: { attempts: attempt },
   })
+
+  // Notify doctors now that the report is actually ready
+  await sendDoctorNotification(
+    submissionId,
+    String(s.full_name ?? ''),
+    String(s.id_number ?? ''),
+    (s.consultation_type as string[]) ?? [],
+    'ready',
+  ).catch((err: unknown) => console.error('Doctor notification failed:', err))
 }
 
-// ─── Claude call ──────────────────────────────────────────────────────────────
+// ─── Fallback structured report ───────────────────────────────────────────────
+// Used when AI is unavailable. Lays out all clinical data in a clean format
+// so the doctor can still complete and send the report.
+
+type DxaResults = {
+  l1l4?: Record<string, string>
+  femoralNeck?: Record<string, string>
+  totalHip?: Record<string, string>
+  lowestTScore?: string
+  whoClass?: string
+}
+
+function buildFallbackReport(s: Record<string, unknown>): string {
+  const dxa      = ((s.dxa_results ?? {}) as DxaResults)
+  const risks    = (s.additional_risks as string[]) ?? []
+  const strategy = (s.therapeutic_strategy as string[]) ?? []
+
+  const val = (v: unknown, suffix = '') =>
+    (v !== null && v !== undefined && String(v).trim())
+      ? `${String(v).trim()}${suffix}`
+      : 'Not recorded'
+
+  // Helper: build an HTML table section
+  const section = (heading: string, rows: Array<[string, string]>) =>
+    `<h2>${heading}</h2>
+<table>${rows.map(([l, v]) => `<tr><td>${l}</td><td>${v}</td></tr>`).join('')}</table>`
+
+  const dxaSiteLine = (r?: Record<string, string>): string => {
+    if (!r) return 'Not recorded'
+    const parts = [
+      r.bmd    ? `BMD ${r.bmd} g/cm²`      : null,
+      r.tScore ? `T-score ${r.tScore}`      : null,
+      r.zScore ? `Z-score ${r.zScore}`      : null,
+      r.pctChange ? `Change ${r.pctChange}%` : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join('  ·  ') : 'Not recorded'
+  }
+
+  return [
+    // ── Patient information (filled by patient) ───────────────────────────────
+    section('Patient information', [
+      ['Consultation type',  (s.consultation_type as string[])?.join(', ') || 'Not recorded'],
+      ['Full name',          val(s.full_name)],
+      ['Date of birth',      val(s.date_of_birth)],
+      ['Sex',                val(s.sex)],
+      ['Ethnicity',          val(s.ethnicity)],
+      ['Height',             val(s.height_cm, ' cm')],
+      ['Weight',             val(s.weight_kg, ' kg')],
+      ['BMI',                val(s.bmi)],
+    ]),
+
+    section('Fracture history', [
+      ['Fragility fractures',        val(s.fragility_fractures)],
+      ['Vertebral fractures',        val(s.vertebral_fractures)],
+      ['Height loss',                val(s.height_loss_cm, ' cm')],
+      ['Recent fracture (past year)', val(s.recent_fracture)],
+    ]),
+
+    section('Risk factors', [
+      ['Additional risks',        risks.length ? risks.join(', ') : 'None reported'],
+      ['Falls in past 12 months', val(s.falls_last_year)],
+    ]),
+
+    // Divider between patient and radiographer sections
+    '<p><strong>— Radiographer assessment —</strong></p>',
+
+    // ── Radiographer data (filled by radiographer) ────────────────────────────
+    section('DXA technical details', [
+      ['Manufacturer',      val(s.dxa_manufacturer)],
+      ['Model',             val(s.dxa_model)],
+      ['Software version',  val(s.dxa_software)],
+      ['Reference database', val(s.dxa_reference_db)],
+      ['Study date',        val(s.study_date)],
+      ['Prior study date',  val(s.prior_study_date)],
+      ['Artefacts',         s.dxa_artefacts ? String(s.dxa_artefacts) : 'None'],
+    ]),
+
+    section('DXA results', [
+      ['L1–L4',             dxaSiteLine(dxa.l1l4)],
+      ['Femoral neck',      dxaSiteLine(dxa.femoralNeck)],
+      ['Total hip',         dxaSiteLine(dxa.totalHip)],
+      ['Lowest T-score',    val(dxa.lowestTScore)],
+      ['WHO classification', val(dxa.whoClass)],
+    ]),
+
+    section('Trabecular bone score (TBS)', [
+      ['TBS value',                     val(s.tbs_value)],
+      ['Interpretation',                val(s.tbs_interpretation)],
+      ['TBS-adjusted FRAX (major/hip)', val(s.tbs_adjusted_frax)],
+    ]),
+
+    section('Vertebral fracture assessment (VFA)', [
+      ['Indication',           val(s.vfa_indication)],
+      ['Fractures identified',  val(s.vfa_fractures)],
+      ['Summary',              val(s.vfa_summary)],
+    ]),
+
+    section('Laboratory summary', [
+      ['Results', val(s.lab_summary)],
+    ]),
+
+    section('Fracture risk stratification', [
+      ['Risk category',  val(s.risk_category)],
+      ['FRAX (major/hip)', val(s.frax_major_hip)],
+      ['Rationale',      val(s.risk_rationale)],
+    ]),
+
+    section('Therapeutic strategy', [
+      ['Strategy',            strategy.length ? strategy.join(', ') : 'Not recorded'],
+      ['Treatment rationale', val(s.treatment_rationale)],
+    ]),
+
+    section('Longitudinal plan', [
+      ['Repeat DXA',    val(s.repeat_dxa_years, ' years')],
+      ['Repeat TBS',    val(s.repeat_tbs)],
+      ['Monitoring plan', val(s.monitoring_plan)],
+    ]),
+  ].join('\n')
+}
+
+
+
+
+// ─── Doctor email notification ────────────────────────────────────────────────
+
+async function sendDoctorNotification(
+  submissionId: string,
+  patientName: string,
+  patientId: string,
+  consultationType: string[],
+  reportStatus: 'ready' | 'fallback',
+): Promise<void> {
+  if (!process.env.RESEND_API_KEY) return
+
+  const admin = createAdminClient()
+
+  // Read recipient emails from linked doctors in practice_settings
+  const { data: ps } = await admin
+    .from('practice_settings')
+    .select('doctors')
+    .limit(1)
+    .single()
+
+  type DoctorEntry = { name?: string; email?: string; user_id?: string }
+  const doctors: DoctorEntry[] = ps?.doctors ?? []
+  const recipients = doctors
+    .filter((d: DoctorEntry) => d.user_id && d.email)
+    .map((d: DoctorEntry) => d.email as string)
+
+  if (recipients.length === 0) return
+
+  const { Resend } = await import('resend')
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  const isFallback = reportStatus === 'fallback'
+
+  await resend.emails.send({
+    from: process.env.FROM_EMAIL ?? 'noreply@yourpractice.com',
+    to: recipients,
+    subject: isFallback
+      ? `DXA report ready (structured summary) — ${patientName}`
+      : `DXA report ready — ${patientName}`,
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
+        <h2 style="color:#1e3a5f;margin-bottom:8px">DXA report ready for review</h2>
+        ${isFallback ? '<p style="color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;font-size:13px;margin-bottom:20px">The AI report could not be generated. A structured summary has been prepared instead.</p>' : ''}
+        <p style="color:#475569;margin-bottom:20px">
+          The report for <strong>${patientName}</strong> (ID: ${patientId}) is ready.
+          Consultation: ${consultationType.join(', ')}
+        </p>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL}/doctor/patients/${submissionId}"
+           style="display:inline-block;background:#1e3a5f;color:white;text-decoration:none;
+                  padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">
+          Open report
+        </a>
+        <p style="margin-top:24px;color:#94a3b8;font-size:12px">
+          Automated notification — do not reply.
+        </p>
+      </div>`,
+  })
+}
+
+// ─── Claude API call ──────────────────────────────────────────────────────────
 
 async function callClaude(prompt: string): Promise<string> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -101,7 +310,7 @@ function validateOutput(html: string, s: Record<string, unknown>): V {
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
 function buildPrompt(s: Record<string, unknown>): string {
-  const dxa = (s.dxa_results as Record<string, Record<string, string>>) ?? {}
+  const dxa = ((s.dxa_results ?? {}) as DxaResults)
   const row = (site: string, r?: Record<string, string>) =>
     r ? `${site}: BMD ${r.bmd ?? '—'} g/cm², T-score ${r.tScore ?? '—'}, Z-score ${r.zScore ?? '—'}, change ${r.pctChange ?? '—'}%, significant: ${r.significant ?? '—'}` : ''
 
@@ -143,7 +352,7 @@ Artefacts: ${s.dxa_artefacts || 'None'}
 ${row('L1–L4', dxa.l1l4)}
 ${row('Femoral neck', dxa.femoralNeck)}
 ${row('Total hip', dxa.totalHip)}
-Lowest T-score: ${(dxa as Record<string, string>).lowestTScore ?? '—'} | WHO: ${(dxa as Record<string, string>).whoClass ?? '—'}
+Lowest T-score: ${dxa.lowestTScore ?? '—'} | WHO: ${dxa.whoClass ?? '—'}
 
 TBS: ${s.tbs_value} (${s.tbs_interpretation}) | FRAX adjusted: ${s.tbs_adjusted_frax}
 VFA: ${s.vfa_indication} | Fractures: ${s.vfa_fractures} | Summary: ${s.vfa_summary}

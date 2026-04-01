@@ -7,10 +7,11 @@ import SignOutButton from '@/components/SignOutButton'
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
-function Field({ label, value, onChange, placeholder = '', hint = '' }: {
+function Field({ label, value, onChange, onBlur, placeholder = '', hint = '' }: {
   label: string
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
   placeholder?: string
   hint?: string
 }) {
@@ -21,6 +22,7 @@ function Field({ label, value, onChange, placeholder = '', hint = '' }: {
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 bg-white text-slate-800
                    text-base focus:outline-none focus:border-blue-500 transition-colors"
@@ -158,21 +160,14 @@ function LetterheadPreview({ settings }: { settings: PracticeSettings }) {
           <div className="h-2 bg-slate-100 rounded w-5/6" />
         </div>
         {/* Signature preview */}
-        <div className="mt-6 pt-4 border-t border-slate-100">
-          {settings.doctor1_name && (
-            <div className="mb-2">
-              <p className="text-sm font-semibold" style={{ color: '#1e3a5f' }}>{settings.doctor1_name}</p>
-              <p className="text-xs text-slate-400">Subspecialist in Osteoporosis & Bone Health</p>
-              {settings.doctor1_number && <p className="text-xs text-slate-400">Practice no: {settings.doctor1_number}</p>}
+        <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
+          {settings.doctors.map((doc, i) => doc.name ? (
+            <div key={i}>
+              <p className="text-sm font-semibold" style={{ color: '#1e3a5f' }}>{doc.name}</p>
+              <p className="text-xs text-slate-400">{settings.practice_sub || 'Subspecialist in Osteoporosis & Bone Health'}</p>
+              {doc.number && <p className="text-xs text-slate-400">Practice no: {doc.number}</p>}
             </div>
-          )}
-          {settings.doctor2_name && (
-            <div>
-              <p className="text-sm font-semibold" style={{ color: '#1e3a5f' }}>{settings.doctor2_name}</p>
-              <p className="text-xs text-slate-400">Subspecialist in Osteoporosis & Bone Health</p>
-              {settings.doctor2_number && <p className="text-xs text-slate-400">Practice no: {settings.doctor2_number}</p>}
-            </div>
-          )}
+          ) : null)}
         </div>
       </div>
     </div>
@@ -180,6 +175,13 @@ function LetterheadPreview({ settings }: { settings: PracticeSettings }) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type Doctor = {
+  name:     string
+  number:   string
+  user_id?: string
+  email?:   string   // auto-populated when doctor clicks "This is me"
+}
 
 type PracticeSettings = {
   id: string
@@ -189,10 +191,7 @@ type PracticeSettings = {
   practice_phone: string
   practice_email: string
   practice_number: string
-  doctor1_name: string
-  doctor1_number: string
-  doctor2_name: string
-  doctor2_number: string
+  doctors: Doctor[]
 }
 
 const emptySettings = (): PracticeSettings => ({
@@ -200,13 +199,10 @@ const emptySettings = (): PracticeSettings => ({
   practice_name: '',
   practice_sub: 'Subspecialist in Osteoporosis & Bone Health',
   practice_address: '',
-  practice_phone: '',
-  practice_email: '',
-  practice_number: '',
-  doctor1_name: '',
-  doctor1_number: '',
-  doctor2_name: '',
-  doctor2_number: '',
+  practice_phone:   '',
+  practice_email:   '',
+  practice_number:  '',
+  doctors: [],
 })
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -215,20 +211,21 @@ export default function AdminPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [loading, setLoading]   = useState(true)
-  const [role, setRole]         = useState('')
-  const [userName, setUserName] = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [role, setRole]           = useState('')
+  const [userName, setUserName]   = useState('')
+  const [currentUserId, setCurrentUserId] = useState('')
+  const [currentUserEmail, setCurrentUserEmail]             = useState('')
+  const [radiographerEmails, setRadiographerEmails]         = useState<string[]>([])
 
   // Sections
-  const [settings, setSettings]                 = useState<PracticeSettings>(emptySettings())
-  const [doctorEmails, setDoctorEmails]         = useState<string[]>([])
-  const [radiographerEmail, setRadiographerEmail] = useState('')
+  const [settings, setSettings]                   = useState<PracticeSettings>(emptySettings())
+  const [newDoctorName, setNewDoctorName]         = useState('')
+  const [newDoctorNumber, setNewDoctorNumber]     = useState('')
 
   // Save state per section
-  const [savingLetterhead, setSavingLetterhead] = useState(false)
-  const [savedLetterhead, setSavedLetterhead]   = useState(false)
-  const [savingEmails, setSavingEmails]         = useState(false)
-  const [savedEmails, setSavedEmails]           = useState(false)
+  const [savingLetterhead, setSavingLetterhead]           = useState(false)
+  const [savedLetterhead, setSavedLetterhead]             = useState(false)
 
   const upd = (key: keyof PracticeSettings) => (val: string) =>
     setSettings(prev => ({ ...prev, [key]: val }))
@@ -251,6 +248,8 @@ export default function AdminPage() {
 
       setRole(roleData.role)
       setUserName(roleData.name ?? '')
+      setCurrentUserId(user.id)
+      setCurrentUserEmail(user.email ?? '')
 
       // Load practice settings
       const { data: ps } = await supabase
@@ -259,7 +258,10 @@ export default function AdminPage() {
         .limit(1)
         .single()
 
-      if (ps) setSettings(ps as PracticeSettings)
+      if (ps) {
+        const loaded = ps as PracticeSettings
+        setSettings({ ...loaded, doctors: loaded.doctors ?? [] })
+      }
 
       // Load notification config
       const { data: nc } = await supabase
@@ -267,8 +269,6 @@ export default function AdminPage() {
         .select('*')
 
       nc?.forEach(row => {
-        if (row.event === 'radiographer_submitted') setDoctorEmails(row.recipient_emails ?? [])
-        if (row.event === 'patient_submitted')       setRadiographerEmail(row.recipient_emails?.[0] ?? '')
       })
 
       setLoading(false)
@@ -288,20 +288,23 @@ export default function AdminPage() {
     setTimeout(() => setSavedLetterhead(false), 2500)
   }
 
-  const saveEmails = async () => {
-    setSavingEmails(true)
+
+
+  // Silent auto-save for instant actions (doctors, emails)
+  const autoSaveDoctors = async (newDoctors: typeof settings.doctors) => {
     await fetch('/api/admin/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'emails',
-        doctorEmails,
-        radiographerEmail,
-      }),
-    })
-    setSavingEmails(false)
-    setSavedEmails(true)
-    setTimeout(() => setSavedEmails(false), 2500)
+      body: JSON.stringify({ type: 'letterhead', settings: { ...settings, doctors: newDoctors } }),
+    }).catch(console.error)
+  }
+
+  const autoSaveRadiographerEmails = async (newEmails: string[]) => {
+    await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'emails', radiographerEmails: newEmails }),
+    }).catch(console.error)
   }
 
   if (loading) return <div className="py-20 text-center text-slate-400">Loading settings...</div>
@@ -328,28 +331,45 @@ export default function AdminPage() {
 
       <div className="space-y-6">
 
-        {/* ── Email notifications ─────────────────────────────────────── */}
+                {/* ── Email notifications ─────────────────────────────────────── */}
         <Card title="Email notifications">
           <p className="text-sm text-slate-500 -mt-2">
-            Control who receives notifications at each stage of the workflow.
+            Doctor notifications are automatic. Radiographer notifications are managed below.
           </p>
 
-          <EmailListEditor
-            label="Doctors notified when radiographer submits"
-            emails={doctorEmails}
-            onChange={setDoctorEmails}
-          />
-
-          <Field
-            label="Radiographer email (notified when patient submits)"
-            value={radiographerEmail}
-            onChange={setRadiographerEmail}
-            placeholder="radiographer@practice.com"
-          />
-
-          <div className="flex justify-end pt-2">
-            <SaveButton onClick={saveEmails} saving={savingEmails} saved={savedEmails} />
+          {/* Doctors — auto from linked accounts */}
+          <div className="px-4 py-3 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-sm font-medium text-blue-800 mb-1">Doctors notified when radiographer submits</p>
+            {settings.doctors.filter(d => d.user_id && d.email).length > 0 ? (
+              <ul className="space-y-1">
+                {settings.doctors.filter(d => d.user_id && d.email).map((d, i) => (
+                  <li key={i} className="text-sm text-blue-700 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                    {d.name} — {d.email}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-blue-600 italic">
+                No doctors linked yet. Go to Doctor signatures below and click "This is me".
+              </p>
+            )}
           </div>
+
+          {/* Radiographers — manual list, supports multiple */}
+          <EmailListEditor
+            label="Radiographers notified when patient submits"
+            emails={radiographerEmails}
+            onChange={emails => {
+              setRadiographerEmails(emails)
+              autoSaveRadiographerEmails(emails)
+            }}
+          />
+          <p className="text-xs text-slate-400 -mt-2">
+            Add all radiographers who should receive new patient notifications.
+            Multiple supported.
+          </p>
+
         </Card>
 
         {/* ── Letterhead ──────────────────────────────────────────────── */}
@@ -410,48 +430,125 @@ export default function AdminPage() {
         {/* ── Doctor signatures ───────────────────────────────────────── */}
         <Card title="Doctor signatures">
           <p className="text-sm text-slate-500 -mt-2">
-            Shown at the bottom of every report. Leave blank if not applicable.
+            Reports are signed by whoever is logged in when they download or email.
+            Add as many doctors as needed.
           </p>
 
-          <div className="pb-4 border-b border-slate-100">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Doctor 1</p>
-            <div className="grid grid-cols-2 gap-4">
-              <Field
-                label="Full name"
-                value={settings.doctor1_name}
-                onChange={upd('doctor1_name')}
-                placeholder="Dr Jane Smith"
-              />
-              <Field
-                label="Practice / registration number"
-                value={settings.doctor1_number}
-                onChange={upd('doctor1_number')}
-                placeholder="GMC: 1234567"
-              />
+          {settings.doctors.length > 0 && (
+            <div className="space-y-3">
+              {settings.doctors.map((doc, i) => (
+                <div key={i} className="flex items-end gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex-1 grid grid-cols-2 gap-3">
+                    <Field
+                      label="Full name"
+                      value={doc.name}
+                      onChange={v => {
+                        const updated = [...settings.doctors]
+                        updated[i] = { ...updated[i], name: v }
+                        setSettings(prev => ({ ...prev, doctors: updated }))
+                      }}
+                      onBlur={() => autoSaveDoctors(settings.doctors)}
+                      placeholder="Dr Jane Smith"
+                    />
+                    <Field
+                      label="Practice / registration number"
+                      value={doc.number}
+                      onChange={v => {
+                        const updated = [...settings.doctors]
+                        updated[i] = { ...updated[i], number: v }
+                        setSettings(prev => ({ ...prev, doctors: updated }))
+                      }}
+                      onBlur={() => autoSaveDoctors(settings.doctors)}
+                      placeholder="e.g. HPCSA 123456"
+                    />
+                  </div>
+                  <div className="flex flex-col items-center gap-2 flex-shrink-0 pb-1">
+                    {/* Only show linking UI once currentUserId has loaded */}
+                    {currentUserId && doc.user_id === currentUserId ? (
+                      <button
+                        onClick={() => {
+                          const updated = [...settings.doctors]
+                          updated[i] = { ...updated[i], user_id: undefined, email: undefined }
+                          setSettings(prev => ({ ...prev, doctors: updated }))
+                          autoSaveDoctors(updated)
+                        }}
+                        className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors whitespace-nowrap"
+                        title="Click to unlink your account from this entry"
+                      >
+                        Your account
+                      </button>
+                    ) : currentUserId ? (
+                      <button
+                        onClick={() => {
+                          const updated = settings.doctors.map((d, idx) =>
+                            idx === i
+                              ? { ...d, user_id: currentUserId, email: currentUserEmail }
+                              : d.user_id === currentUserId
+                              ? { ...d, user_id: undefined, email: undefined }
+                              : d
+                          )
+                          setSettings(prev => ({ ...prev, doctors: updated }))
+                          autoSaveDoctors(updated)
+                        }}
+                        className="px-2 py-1 text-xs font-medium text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap"
+                        title="Link this entry to your login account"
+                      >
+                        This is me
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => {
+                        const updated = settings.doctors.filter((_, idx) => idx !== i)
+                        setSettings(prev => ({ ...prev, doctors: updated }))
+                        autoSaveDoctors(updated)
+                      }}
+                      className="text-slate-300 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+              {settings.doctors.length === 0 ? 'Add a doctor' : 'Add another doctor'}
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="Full name" value={newDoctorName} onChange={setNewDoctorName} placeholder="Dr Jane Smith" />
+              <Field label="Registration number" value={newDoctorNumber} onChange={setNewDoctorNumber} placeholder="HPCSA 123456" />
+            </div>
+            <button
+              onClick={() => {
+                if (!newDoctorName.trim()) return
+                setSettings(prev => ({
+                  ...prev,
+                  doctors: [...prev.doctors, {
+                    name:   newDoctorName.trim(),
+                    number: newDoctorNumber.trim(),
+                  }],
+                }))
+                const newDoctors = [...settings.doctors, {
+                  name:   newDoctorName.trim(),
+                  number: newDoctorNumber.trim(),
+                }]
+                autoSaveDoctors(newDoctors)
+                setNewDoctorName('')
+                setNewDoctorNumber('')
+              }}
+              disabled={!newDoctorName.trim()}
+              className="px-4 py-2 text-sm font-medium text-white rounded-xl disabled:opacity-40 transition-all"
+              style={{ backgroundColor: '#1e3a5f' }}
+            >
+              Add doctor
+            </button>
           </div>
 
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Doctor 2</p>
-            <div className="grid grid-cols-2 gap-4">
-              <Field
-                label="Full name"
-                value={settings.doctor2_name}
-                onChange={upd('doctor2_name')}
-                placeholder="Dr John Jones"
-              />
-              <Field
-                label="Practice / registration number"
-                value={settings.doctor2_number}
-                onChange={upd('doctor2_number')}
-                placeholder="GMC: 7654321"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <SaveButton onClick={saveLetterhead} saving={savingLetterhead} saved={savedLetterhead} />
-          </div>
         </Card>
 
         {/* ── Live preview ─────────────────────────────────────────────── */}

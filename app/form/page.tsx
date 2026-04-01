@@ -287,16 +287,31 @@ function Step2({ data, update, next, back }: StepProps) {
 
 function Step3({ data, update, next, back }: StepProps) {
   const sexOptions = ['Male', 'Female', 'Prefer not to say']
+
+  const dobError = (() => {
+    if (!data.dateOfBirth) return null
+    const dob = new Date(data.dateOfBirth)
+    if (isNaN(dob.getTime())) return 'Please enter a valid date.'
+    if (dob > new Date()) return 'Date of birth cannot be in the future.'
+    if (dob < new Date('1900-01-01')) return 'Please enter a realistic date of birth.'
+    return null
+  })()
+
   return (
     <>
       <StepTitle title="Tell us a little about yourself." />
       <div className="space-y-6">
-        <TextInput
-          label="Date of birth"
-          value={data.dateOfBirth}
-          onChange={v => update('dateOfBirth', v)}
-          type="date"
-        />
+        <div>
+          <TextInput
+            label="Date of birth"
+            value={data.dateOfBirth}
+            onChange={v => update('dateOfBirth', v)}
+            type="date"
+          />
+          {dobError && (
+            <p className="mt-2 text-sm text-red-600 font-medium">{dobError}</p>
+          )}
+        </div>
         <div>
           <label className="block text-sm font-medium text-slate-600 mb-2">Sex</label>
           <div className="space-y-2">
@@ -317,17 +332,30 @@ function Step3({ data, update, next, back }: StepProps) {
           placeholder="e.g. White British"
         />
       </div>
-      <NextButton onClick={next} disabled={!data.dateOfBirth || !data.sex} />
+      <NextButton onClick={next} disabled={!data.dateOfBirth || !data.sex || !!dobError} />
       <BackButton onClick={back} />
     </>
   )
 }
 
 function Step4({ data, update, next, back }: StepProps) {
+  const heightVal = parseFloat(data.height)
+  const weightVal = parseFloat(data.weight)
+
+  const heightError = data.height && (isNaN(heightVal) || heightVal < 50 || heightVal > 250)
+    ? 'Please enter a height between 50 and 250 cm.'
+    : null
+
+  const weightError = data.weight && (isNaN(weightVal) || weightVal < 20 || weightVal > 300)
+    ? 'Please enter a weight between 20 and 300 kg.'
+    : null
+
   const bmi =
-    data.height && data.weight
-      ? (parseFloat(data.weight) / Math.pow(parseFloat(data.height) / 100, 2)).toFixed(1)
+    data.height && data.weight && !heightError && !weightError
+      ? (weightVal / Math.pow(heightVal / 100, 2)).toFixed(1)
       : null
+
+  const canContinue = data.height && data.weight && !heightError && !weightError
 
   return (
     <>
@@ -336,22 +364,32 @@ function Step4({ data, update, next, back }: StepProps) {
         hint="This helps calculate your BMI automatically."
       />
       <div className="space-y-4">
-        <TextInput
-          label="Height"
-          value={data.height}
-          onChange={v => update('height', v)}
-          type="number"
-          placeholder="170"
-          suffix="cm"
-        />
-        <TextInput
-          label="Weight"
-          value={data.weight}
-          onChange={v => update('weight', v)}
-          type="number"
-          placeholder="70"
-          suffix="kg"
-        />
+        <div>
+          <TextInput
+            label="Height"
+            value={data.height}
+            onChange={v => update('height', v)}
+            type="number"
+            placeholder="170"
+            suffix="cm"
+          />
+          {heightError && (
+            <p className="mt-2 text-sm text-red-600 font-medium">{heightError}</p>
+          )}
+        </div>
+        <div>
+          <TextInput
+            label="Weight"
+            value={data.weight}
+            onChange={v => update('weight', v)}
+            type="number"
+            placeholder="70"
+            suffix="kg"
+          />
+          {weightError && (
+            <p className="mt-2 text-sm text-red-600 font-medium">{weightError}</p>
+          )}
+        </div>
         {bmi && (
           <div className="px-4 py-3 bg-blue-50 rounded-xl border border-blue-100">
             <p className="text-sm text-blue-700">
@@ -360,7 +398,7 @@ function Step4({ data, update, next, back }: StepProps) {
           </div>
         )}
       </div>
-      <NextButton onClick={next} disabled={!data.height || !data.weight} />
+      <NextButton onClick={next} disabled={!canContinue} />
       <BackButton onClick={back} />
     </>
   )
@@ -596,8 +634,10 @@ export default function FormPage() {
     setData(prev => ({ ...prev, [key]: value }))
   }
 
-  const next = () => setStep(s => Math.min(s + 1, TOTAL_STEPS))
-  const back = () => setStep(s => Math.max(s - 1, 1))
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' })
+
+  const next = () => { setStep(s => Math.min(s + 1, TOTAL_STEPS)); scrollTop() }
+  const back = () => { setStep(s => Math.max(s - 1, 1)); scrollTop() }
 
   const handleSubmit = async () => {
     setSubmitting(true)
@@ -607,10 +647,15 @@ export default function FormPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
-      if (res.ok) setSubmitted(true)
-      else alert('Something went wrong. Please try again.')
-    } catch {
-      alert('Could not connect. Please check your connection and try again.')
+      if (res.ok) {
+        setSubmitted(true)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        const msg = body?.error ?? `Server error ${res.status}`
+        alert(`Submission failed: ${msg}\n\nCheck the terminal in Cursor for more details.`)
+      }
+    } catch (err) {
+      alert('Could not connect to the server. Make sure the app is running and your .env.local file has valid Supabase credentials.')
     } finally {
       setSubmitting(false)
     }

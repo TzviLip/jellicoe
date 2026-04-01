@@ -1,10 +1,10 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase.server'
 import { redirect } from 'next/navigation'
 
 // Server-side auth guard for the entire /admin section
 // Runs before any admin page renders — no client-side flicker possible
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')

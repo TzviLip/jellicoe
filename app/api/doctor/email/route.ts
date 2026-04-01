@@ -17,7 +17,14 @@ export async function POST(req: NextRequest) {
   }
 
   const practiceSettings = await getPracticeSettings()
-  const buffer = await buildDocxBuffer({ practiceSettings, report_html, doctor_report, patient_name, patient_id })
+  const buffer = await buildDocxBuffer({
+    practiceSettings,
+    report_html,
+    doctor_report,
+    patient_name,
+    patient_id,
+    signingDoctorId: auth.user.id, // sign as the logged-in doctor
+  })
   const base64 = buffer.toString('base64')
 
   const { Resend } = await import('resend')
@@ -37,7 +44,12 @@ export async function POST(req: NextRequest) {
   })
 
   const admin = createAdminClient()
-  await admin.from('audit_log').insert({ user_id: auth.user.id, action: 'doctor_emailed', submission_id: id, detail: { recipient: to } })
+  await admin.from('audit_log').insert({
+    user_id: auth.user.id,
+    action: 'doctor_emailed',
+    submission_id: id,
+    detail: { recipient: to },
+  })
 
   return NextResponse.json({ success: true })
 }

@@ -8,7 +8,7 @@ export async function requireRole(allowedRoles: Role[]): Promise<
   { user: { id: string }; role: string; error?: never } |
   { error: NextResponse; user?: never; role?: never }
 > {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
@@ -198,14 +198,16 @@ function DxaTable({ results, onChange }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function RadiograherPatient({ params }: { params: { id: string } }) {
+export default function RadiograherPatient({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const supabase = createClient()
 
   const [submission, setSubmission] = useState<Submission | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [saved, setSaved]               = useState(false)
+  const [claimWarning, setClaimWarning] = useState<string | null>(null)
 
   // Section 5 — DXA technical
   const [manufacturer, setManufacturer] = useState('')
@@ -253,11 +255,24 @@ export default function RadiograherPatient({ params }: { params: { id: string } 
       const { data } = await supabase
         .from('patient_submissions')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', id)
         .single()
 
       if (data) {
         setSubmission(data as Submission)
+        // Soft-claim this record — warn if someone else has it open
+        fetch('/api/radiographer/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, action: 'claim' }),
+        })
+          .then(r => r.json())
+          .then(res => {
+            if (res.activeClaim) {
+              setClaimWarning(`${res.claimerName} may currently be editing this record. Proceed carefully.`)
+            }
+          })
+          .catch(() => {})
         // Pre-fill if already started
         if (data.dxa_manufacturer) setManufacturer(data.dxa_manufacturer)
         if (data.dxa_model) setModel(data.dxa_model)
@@ -286,7 +301,16 @@ export default function RadiograherPatient({ params }: { params: { id: string } 
       setLoading(false)
     }
     load()
-  }, [params.id])
+
+    // Release claim when leaving the page
+    return () => {
+      fetch('/api/radiographer/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'release' }),
+      }).catch(() => {})
+    }
+  }, [id])
 
   const toggleStrategy = (v: string) => {
     setTherapeuticStrategy(prev =>
@@ -300,7 +324,7 @@ export default function RadiograherPatient({ params }: { params: { id: string } 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: params.id,
+        id: id,
         dxa_manufacturer: manufacturer,
         dxa_model: model,
         dxa_software: software,

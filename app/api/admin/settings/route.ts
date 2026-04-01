@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient, createAdminClient } from '@/lib/supabase.server'
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
@@ -32,10 +32,7 @@ export async function POST(req: NextRequest) {
         practice_phone:   settings.practice_phone,
         practice_email:   settings.practice_email,
         practice_number:  settings.practice_number,
-        doctor1_name:     settings.doctor1_name,
-        doctor1_number:   settings.doctor1_number,
-        doctor2_name:     settings.doctor2_name,
-        doctor2_number:   settings.doctor2_number,
+        doctors:          settings.doctors ?? [],
         updated_at:       new Date().toISOString(),
       })
       .eq('id', settings.id)
@@ -47,23 +44,14 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.type === 'emails') {
-    const { doctorEmails, radiographerEmail } = body
+    const { radiographerEmails } = body
 
-    // Update doctor notification emails
-    await admin
-      .from('notification_config')
-      .upsert({
-        event: 'radiographer_submitted',
-        recipient_emails: doctorEmails,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'event' })
-
-    // Update radiographer notification email
+    // Update radiographer notification emails (list)
     await admin
       .from('notification_config')
       .upsert({
         event: 'patient_submitted',
-        recipient_emails: radiographerEmail ? [radiographerEmail] : [],
+        recipient_emails: Array.isArray(radiographerEmails) ? radiographerEmails : [],
         updated_at: new Date().toISOString(),
       }, { onConflict: 'event' })
   }

@@ -5,7 +5,7 @@ import { generateReport } from '@/lib/generateReport'
 export async function POST(req: NextRequest) {
   try {
     // Verify the user is authenticated
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
