@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy: #1e3a5f;
+  --navy-light: #2c5282;
+  --accent: #3b82f6;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #1a202c;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Smooth page transitions */
+.step-enter {
+  opacity: 0;
+  transform: translateX(24px);
+}
+.step-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 200ms ease, transform 200ms ease;
+}

@@ -1,0 +1,30 @@
+{
+  "name": "dxa-app",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3",
+    "@supabase/supabase-js": "^2.43.4",
+    "@supabase/ssr": "^0.3.0",
+    "html-docx-js": "^0.3.1",
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "resend": "^3.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
