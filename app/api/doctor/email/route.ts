@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase.server'
-import { getPracticeSettings, buildFullDocumentHtml } from '@/lib/document'
+import { getPracticeSettings, buildDocxBuffer } from '@/lib/document'
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(['doctor', 'admin'])
@@ -17,15 +17,8 @@ export async function POST(req: NextRequest) {
   }
 
   const practiceSettings = await getPracticeSettings()
-  const fullHtml = buildFullDocumentHtml({ practiceSettings, report_html, doctor_report, patient_name, patient_id })
-
-  const htmlDocx = await import('html-docx-js/dist/html-docx')
-  const docxBuffer: Buffer = htmlDocx.default.asBlob(fullHtml, {
-    orientation: 'portrait',
-    margins: { top: 1440, right: 1080, bottom: 1440, left: 1080 },
-  })
-
-  const base64 = Buffer.from(await docxBuffer.arrayBuffer()).toString('base64')
+  const buffer = await buildDocxBuffer({ practiceSettings, report_html, doctor_report, patient_name, patient_id })
+  const base64 = buffer.toString('base64')
 
   const { Resend } = await import('resend')
   const resend = new Resend(process.env.RESEND_API_KEY)
@@ -44,12 +37,7 @@ export async function POST(req: NextRequest) {
   })
 
   const admin = createAdminClient()
-  await admin.from('audit_log').insert({
-    user_id: auth.user.id,
-    action: 'doctor_emailed',
-    submission_id: id,
-    detail: { recipient: to },
-  })
+  await admin.from('audit_log').insert({ user_id: auth.user.id, action: 'doctor_emailed', submission_id: id, detail: { recipient: to } })
 
   return NextResponse.json({ success: true })
 }
