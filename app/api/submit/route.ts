@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase.server'
+import { appUrl } from '@/lib/appUrl'
 
 // ─── Rate limiter ─────────────────────────────────────────────────────────────
 

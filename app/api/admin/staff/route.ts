@@ -74,6 +74,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to assign role' }, { status: 500 })
   }
 
+  // If this is a doctor, auto-add to practice_settings.doctors array
+  // so signature is available immediately without manual "This is me" step
+  if (role === 'doctor') {
+    const { data: ps } = await admin
+      .from('practice_settings').select('id, doctors').limit(1).single()
+
+    if (ps) {
+      const doctors = Array.isArray(ps.doctors) ? ps.doctors : []
+      // Only add if not already present (by email)
+      const alreadyExists = doctors.some((d: { email?: string }) => d.email === email)
+      if (!alreadyExists) {
+        await admin
+          .from('practice_settings')
+          .update({
+            doctors: [...doctors, {
+              name:    name.trim(),
+              number:  '',
+              user_id: created.user.id,
+              email,
+            }],
+          })
+          .eq('id', ps.id)
+      }
+    }
+  }
+
   // Audit log
   await admin.from('audit_log').insert({
     user_id:  auth.user.id,

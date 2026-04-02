@@ -1,5 +1,6 @@
 import 'server-only'
 import { createAdminClient } from './supabase.server'
+import { appUrl } from './appUrl'
 
 const MAX_RETRIES = 2
 

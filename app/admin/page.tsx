@@ -180,7 +180,7 @@ type Doctor = {
   name:     string
   number:   string
   user_id?: string
-  email?:   string   // auto-populated when doctor clicks "This is me"
+  email?:   string   // auto-populated when doctor is invited via Staff accounts
 }
 
 type PracticeSettings = {
@@ -215,7 +215,6 @@ export default function AdminPage() {
   const [role, setRole]           = useState('')
   const [userName, setUserName]   = useState('')
   const [currentUserId, setCurrentUserId] = useState('')
-  const [currentUserEmail, setCurrentUserEmail]             = useState('')
   const [radiographerEmails, setRadiographerEmails]         = useState<string[]>([])
 
   // Sections
@@ -260,7 +259,6 @@ export default function AdminPage() {
       setRole(roleData.role)
       setUserName(roleData.name ?? '')
       setCurrentUserId(user.id)
-      setCurrentUserEmail(user.email ?? '')
 
       // Load practice settings
       const { data: ps } = await supabase
@@ -411,7 +409,7 @@ export default function AdminPage() {
               </ul>
             ) : (
               <p className="text-sm text-blue-600 italic">
-                No doctors linked yet. Go to Doctor signatures below and click "This is me".
+                No doctors linked yet. Invite doctors via Staff accounts below — they are linked automatically.
               </p>
             )}
           </div>
@@ -490,8 +488,7 @@ export default function AdminPage() {
         {/* ── Doctor signatures ───────────────────────────────────────── */}
         <Card title="Doctor signatures">
           <p className="text-sm text-slate-500 -mt-2">
-            Reports are signed by whoever is logged in when they download or email.
-            Add as many doctors as needed.
+            Reports are signed by whoever is logged in. Doctors are linked automatically when invited via Staff accounts below.
           </p>
 
           {settings.doctors.length > 0 && (
@@ -523,39 +520,12 @@ export default function AdminPage() {
                     />
                   </div>
                   <div className="flex flex-col items-center gap-2 flex-shrink-0 pb-1">
-                    {/* Only show linking UI once currentUserId has loaded */}
-                    {currentUserId && doc.user_id === currentUserId ? (
-                      <button
-                        onClick={() => {
-                          const updated = [...settings.doctors]
-                          updated[i] = { ...updated[i], user_id: undefined, email: undefined }
-                          setSettings(prev => ({ ...prev, doctors: updated }))
-                          autoSaveDoctors(updated)
-                        }}
-                        className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors whitespace-nowrap"
-                        title="Click to unlink your account from this entry"
-                      >
-                        Your account
-                      </button>
-                    ) : currentUserId ? (
-                      <button
-                        onClick={() => {
-                          const updated = settings.doctors.map((d, idx) =>
-                            idx === i
-                              ? { ...d, user_id: currentUserId, email: currentUserEmail }
-                              : d.user_id === currentUserId
-                              ? { ...d, user_id: undefined, email: undefined }
-                              : d
-                          )
-                          setSettings(prev => ({ ...prev, doctors: updated }))
-                          autoSaveDoctors(updated)
-                        }}
-                        className="px-2 py-1 text-xs font-medium text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap"
-                        title="Link this entry to your login account"
-                      >
-                        This is me
-                      </button>
-                    ) : null}
+                    {/* Show linked indicator — linking happens automatically on invite */}
+                    {doc.user_id && (
+                      <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg whitespace-nowrap">
+                        {doc.user_id === currentUserId ? 'You' : 'Linked'}
+                      </span>
+                    )}
                     <button
                       onClick={() => {
                         const updated = settings.doctors.filter((_, idx) => idx !== i)
