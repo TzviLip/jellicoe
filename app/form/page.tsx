@@ -236,23 +236,16 @@ function Step1({ data, update, next }: StepProps) {
     'Complex Secondary Osteoporosis',
     'Drug Holiday Review',
   ]
-  const toggle = (v: string) => {
-    const current = data.consultationType
-    update('consultationType', current.includes(v) ? current.filter(x => x !== v) : [...current, v])
-  }
   return (
     <>
-      <StepTitle
-        title="What type of consultation is this?"
-        hint="Select all that apply."
-      />
+      <StepTitle title="What type of consultation is this?" />
       <div className="space-y-3">
         {options.map(o => (
-          <CheckCard
+          <OptionCard
             key={o}
             label={o}
-            checked={data.consultationType.includes(o)}
-            onClick={() => toggle(o)}
+            selected={data.consultationType[0] === o}
+            onClick={() => update('consultationType', [o])}
           />
         ))}
       </div>
