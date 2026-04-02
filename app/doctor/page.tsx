@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from '@/lib/supabase.server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
+import DeleteSubmissionButton from '@/components/DeleteSubmissionButton'
 
 function StatusBadge({ status, hasReport }: { status: string; hasReport: boolean }) {
   if (status === 'pending_doctor' && !hasReport) {
@@ -100,8 +101,9 @@ export default async function DoctorInbox() {
                       {s.consultation_type?.join(', ')} · Submitted {fmt(s.created_at)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <StatusBadge status={s.status} hasReport={!!s.report_html} />
+                    <DeleteSubmissionButton id={s.id} patientName={s.full_name} />
                     <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24">
                       <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -136,8 +138,9 @@ export default async function DoctorInbox() {
                     {s.finalised_at && ` · Finalised ${fmt(s.finalised_at)}`}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <StatusBadge status={s.status} hasReport={!!s.report_html} />
+                  <DeleteSubmissionButton id={s.id} patientName={s.full_name} />
                   <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24">
                     <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>

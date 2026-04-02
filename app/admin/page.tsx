@@ -223,6 +223,17 @@ export default function AdminPage() {
   const [newDoctorName, setNewDoctorName]         = useState('')
   const [newDoctorNumber, setNewDoctorNumber]     = useState('')
 
+  // Staff management
+  type StaffMember = { user_id: string; name: string; email: string; role: string }
+  const [staff, setStaff]                 = useState<StaffMember[]>([])
+  const [staffLoading, setStaffLoading]   = useState(false)
+  const [inviteEmail, setInviteEmail]     = useState('')
+  const [inviteName, setInviteName]       = useState('')
+  const [inviteRole, setInviteRole]       = useState<'doctor' | 'radiographer'>('radiographer')
+  const [inviting, setInviting]           = useState(false)
+  const [inviteMsg, setInviteMsg]         = useState<{type:'ok'|'err', text:string} | null>(null)
+  const [removingId, setRemovingId]       = useState<string | null>(null)
+
   // Save state per section
   const [savingLetterhead, setSavingLetterhead]           = useState(false)
   const [savedLetterhead, setSavedLetterhead]             = useState(false)
@@ -271,6 +282,15 @@ export default function AdminPage() {
       nc?.forEach(row => {
       })
 
+      // Load staff list
+      setStaffLoading(true)
+      const staffRes = await fetch('/api/admin/staff')
+      if (staffRes.ok) {
+        const staffData = await staffRes.json()
+        setStaff(staffData.staff ?? [])
+      }
+      setStaffLoading(false)
+
       setLoading(false)
     }
     load()
@@ -291,6 +311,46 @@ export default function AdminPage() {
 
 
   // Silent auto-save for instant actions (doctors, emails)
+  const handleInvite = async () => {
+    if (!inviteEmail.trim() || !inviteName.trim()) return
+    setInviting(true)
+    setInviteMsg(null)
+    const res = await fetch('/api/admin/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: inviteEmail.trim(), name: inviteName.trim(), role: inviteRole }),
+    })
+    const data = await res.json()
+    setInviting(false)
+    if (res.ok) {
+      setInviteMsg({ type: 'ok', text: `Account created for ${inviteName}. They will receive a password setup email.` })
+      setInviteEmail('')
+      setInviteName('')
+      // Refresh staff list
+      const staffRes = await fetch('/api/admin/staff')
+      if (staffRes.ok) setStaff((await staffRes.json()).staff ?? [])
+    } else {
+      setInviteMsg({ type: 'err', text: data.error ?? 'Failed to create account.' })
+    }
+  }
+
+  const handleRemoveStaff = async (user_id: string, name: string) => {
+    if (!confirm(`Remove ${name}'s account? They will no longer be able to log in.`)) return
+    setRemovingId(user_id)
+    const res = await fetch('/api/admin/staff', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id }),
+    })
+    setRemovingId(null)
+    if (res.ok) {
+      setStaff(prev => prev.filter(s => s.user_id !== user_id))
+    } else {
+      const data = await res.json()
+      alert(data.error ?? 'Failed to remove account.')
+    }
+  }
+
   const autoSaveDoctors = async (newDoctors: typeof settings.doctors) => {
     await fetch('/api/admin/settings', {
       method: 'POST',
@@ -557,6 +617,95 @@ export default function AdminPage() {
             How the letterhead will appear on downloaded reports.
           </p>
           <LetterheadPreview settings={settings} />
+        </Card>
+
+        {/* ── Staff accounts ───────────────────────────────────────────── */}
+        <Card title="Staff accounts">
+          <p className="text-sm text-slate-500 -mt-2">
+            Manage who can log in. Invited staff receive an email to set their password.
+          </p>
+
+          {/* Current staff */}
+          {staffLoading ? (
+            <p className="text-sm text-slate-400">Loading staff...</p>
+          ) : (
+            <div className="space-y-2">
+              {staff.map(s => (
+                <div key={s.user_id} className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{s.name}</p>
+                    <p className="text-xs text-slate-500">{s.email} &nbsp;·&nbsp;
+                      <span className={`font-medium ${s.role === 'doctor' ? 'text-blue-600' : 'text-teal-600'}`}>
+                        {s.role}
+                      </span>
+                    </p>
+                  </div>
+                  {s.user_id !== currentUserId && (
+                    <button
+                      onClick={() => handleRemoveStaff(s.user_id, s.name)}
+                      disabled={removingId === s.user_id}
+                      className="p-1.5 text-slate-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 disabled:opacity-40"
+                      title="Remove account"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+              {staff.length === 0 && (
+                <p className="text-sm text-slate-400 italic">No staff accounts yet.</p>
+              )}
+            </div>
+          )}
+
+          {/* Invite new staff */}
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Invite new staff member</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Full name" value={inviteName} onChange={setInviteName} placeholder="Dr Jane Smith" />
+              <Field label="Email address" value={inviteEmail} onChange={setInviteEmail} placeholder="jane@practice.com" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1.5">Role</label>
+              <div className="flex gap-2">
+                {(['radiographer', 'doctor'] as const).map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setInviteRole(r)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors capitalize ${
+                      inviteRole === r
+                        ? 'border-blue-600 bg-blue-50 text-blue-800'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {inviteMsg && (
+              <div className={`px-4 py-3 rounded-xl text-sm font-medium ${
+                inviteMsg.type === 'ok'
+                  ? 'bg-green-50 text-green-800 border border-green-200'
+                  : 'bg-red-50 text-red-800 border border-red-200'
+              }`}>
+                {inviteMsg.text}
+              </div>
+            )}
+
+            <button
+              onClick={handleInvite}
+              disabled={inviting || !inviteEmail.trim() || !inviteName.trim()}
+              className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-40"
+              style={{ backgroundColor: '#1e3a5f' }}
+            >
+              {inviting ? 'Creating account...' : 'Create account & send invite'}
+            </button>
+          </div>
         </Card>
 
       </div>

@@ -2,6 +2,7 @@ import { createServerSupabaseClient } from '@/lib/supabase.server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
+import DeleteSubmissionButton from '@/components/DeleteSubmissionButton'
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'pending_radiographer') {
@@ -94,8 +95,9 @@ export default async function RadiograherInbox() {
                       Submitted {fmt(s.created_at)} · {s.consultation_type?.join(', ')}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <StatusBadge status={s.status} />
+                    <DeleteSubmissionButton id={s.id} patientName={s.full_name} />
                     <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24">
                       <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -127,8 +129,9 @@ export default async function RadiograherInbox() {
                   <p className="font-medium text-slate-700">{s.full_name}</p>
                   <p className="text-xs text-slate-400 mt-0.5">ID: {s.id_number} · {fmt(s.created_at)}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <StatusBadge status={s.status} />
+                  <DeleteSubmissionButton id={s.id} patientName={s.full_name} />
                   <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24">
                     <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>

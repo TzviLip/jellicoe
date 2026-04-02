@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     submission_id: id,
   })
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `attachment; filename="DXA_Report_${patient_id}.docx"`,

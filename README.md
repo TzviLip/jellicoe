@@ -1,153 +1,76 @@
-# DXA Bone Density App — Phase 3 (complete)
+# DXA Bone Density App
 
-## Quick start
+## One-time setup (do this once, never again)
 
-```bash
-npm install
-npm run dev
-```
+### 1. Create a Supabase project
+Go to supabase.com → New project.
 
----
+### 2. Run the database schema
+Open `supabase-schema-COMPLETE.sql` → copy the entire file →
+Supabase dashboard → SQL Editor → New query → paste → Run.
 
-## One-time setup
+This is the only time you ever need to use the Supabase SQL Editor.
 
-### 1. Supabase
-- Go to supabase.com → New project
-- Paste `supabase-schema.sql` into SQL Editor → Run
-
-### 2. Environment variables
+### 3. Set up environment variables
 ```bash
 cp .env.local.template .env.local
 ```
-Fill in all values (Supabase keys, Resend key, Anthropic key, emails).
+Fill in: Supabase URL + keys, Resend API key, Anthropic API key.
 
-### 3. Create staff accounts in Supabase
-Authentication → Users → Add user → create radiographer + 2 doctors.
-
-### 4. Assign roles (SQL Editor)
+### 4. Create the first doctor account manually
+Because someone has to be the first admin, the very first doctor account
+must be created in Supabase → Authentication → Users → Add user.
+Then assign their role in SQL Editor (one time only):
 ```sql
 insert into user_roles (user_id, role, name) values
-  ('radiographer-uuid', 'radiographer', 'Radiographer Name'),
-  ('doctor1-uuid',      'doctor',       'Dr Smith'),
-  ('doctor2-uuid',      'doctor',       'Dr Jones');
+  ('paste-uuid-here', 'doctor', 'Dr Smith');
 ```
 
-### 5. Configure doctor notification emails (SQL Editor)
-```sql
-update notification_config
-set recipient_emails = array['dr.smith@practice.com', 'dr.jones@practice.com']
-where event = 'radiographer_submitted';
-```
+After this, all future staff management is done inside the app
+via Settings → Staff accounts.
 
-### 6. Add practice details to letterhead
-Open `app/api/doctor/download/route.ts` — update the letterhead section
-with the practice name, address, phone, and doctor names.
+### 5. Deploy to Vercel
+```bash
+vercel --prod
+```
+Set all environment variables in the Vercel dashboard.
+Update `NEXT_PUBLIC_APP_URL` to your live domain.
 
 ---
 
-## Full workflow
+## After deployment — app-managed setup
 
-```
-Patient  →  /form          →  submits  →  email to radiographer
-Radiographer  →  /radiographer  →  picks patient  →  enters DXA data  →  submits
-                                                  →  AI generates report (background)
-                                                  →  email to doctors
-Doctor  →  /doctor  →  opens report  →  edits in browser  →  adds commentary
-        →  Download .docx  OR  Email to recipient
-```
+Everything below is done inside the app. No Supabase access needed.
+
+1. Log in as the first doctor → go to Settings
+2. **Staff accounts** — invite radiographers and additional doctors by email.
+   They receive a password setup email automatically.
+3. **Letterhead** — fill in practice name, address, phone, etc.
+4. **Doctor signatures** — add each doctor's name and registration number,
+   then each doctor clicks "This is me" next to their own entry.
+5. **Email notifications** — add radiographer emails for patient form alerts.
+   Doctor notifications are automatic based on linked accounts.
 
 ---
 
 ## Routes
 
-| Route | Role | What |
-|-------|------|------|
-| `/form` | Patient | Public form, no login |
+| Route | Who | What |
+|-------|-----|-------|
+| `/form` | Patient | Public intake form |
 | `/login` | Staff | Shared login |
 | `/radiographer` | Radiographer | Patient inbox |
-| `/radiographer/patients/[id]` | Radiographer | DXA data entry |
+| `/radiographer/patients/[id]` | Radiographer | Enter DXA data |
 | `/doctor` | Doctor | Report inbox |
-| `/doctor/patients/[id]` | Doctor | In-browser editor + download/email |
+| `/doctor/patients/[id]` | Doctor | Edit and finalise report |
+| `/admin` | Doctor | Settings + staff management |
 
 ---
 
-## Key files
+## Security checklist (run after deployment)
 
-```
-app/
-  form/page.tsx                        Patient form (all 9 steps)
-  login/page.tsx                       Staff login
-  radiographer/page.tsx                Radiographer inbox
-  radiographer/patients/[id]/page.tsx  DXA data entry form
-  doctor/page.tsx                      Doctor inbox
-  doctor/patients/[id]/page.tsx        Report editor
-  api/
-    submit/route.ts                    Patient → Supabase + email radiographer
-    radiographer/submit/route.ts       DXA data → Supabase + trigger AI + email doctors
-    generate-report/route.ts           Claude API → draft report HTML
-    doctor/save/route.ts               Save doctor edits
-    doctor/finalise/route.ts           Mark complete
-    doctor/download/route.ts           HTML → docx download
-    doctor/email/route.ts              docx → Resend email attachment
-
-lib/supabase.ts                        Supabase client helpers
-middleware.ts                          Route protection
-supabase-schema.sql                    Run once in Supabase
-.env.local.template                    Copy → .env.local
-```
-
----
-
-## Security checklist — run after every deployment
-
-These are the exact checks from the post about vibe-coded app vulnerabilities.
-Run all of these before any real patient data enters the system.
-
-### 1. RLS enabled on every table
-In Supabase → Table Editor, confirm the RLS toggle is ON for:
-- patient_submissions
-- user_roles
-- notification_config
-- audit_log
-- practice_settings
-
-### 2. No secret keys in the browser bundle
-Open your deployed app → F12 → Sources → Ctrl+F and search for each:
-- `service_role` → must return NO results
-- `sk-ant-` → must return NO results  
-- `RESEND_API_KEY` → must return NO results
-- `SUPABASE_SERVICE_KEY` → must return NO results
-
-Only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are
-intentionally public and safe to expose.
-
-### 3. .env file is not publicly accessible
-Visit these URLs — both must return 404:
-- `https://yourdomain.com/.env`
-- `https://yourdomain.com/.env.local`
-- `https://yourdomain.com/.git/HEAD`
-
-### 4. Protected routes block unauthenticated access
-In an incognito window (not logged in), try visiting:
-- `https://yourdomain.com/doctor` → must redirect to /login
-- `https://yourdomain.com/radiographer` → must redirect to /login
-- `https://yourdomain.com/admin` → must redirect to /login
-
-### 5. Security headers are present
-Visit https://securityheaders.com and enter your domain.
-You should score at least a B. The headers set in next.config.js give an A.
-
-### 6. Nobody can self-assign a role
-In Supabase → SQL Editor, run:
-```sql
-select tablename, policyname, cmd 
-from pg_policies 
-where tablename = 'user_roles';
-```
-You should see ONLY a SELECT policy ("Users can read their own role").
-There must be NO INSERT, UPDATE, or DELETE policies on user_roles.
-Roles are assigned only via SQL Editor directly.
-
-### 7. MFA enabled for all staff
-In Supabase → Authentication → Users, confirm MFA is configured
-for the radiographer and both doctor accounts.
+1. Visit `https://yourdomain.com/.env` → must return 404
+2. Incognito window → try `/doctor` → must redirect to `/login`
+3. Go to securityheaders.com → enter your domain → should score A
+4. Supabase → Table Editor → confirm RLS is ON for all tables
+5. Enable MFA for all staff in Supabase → Authentication → Users
