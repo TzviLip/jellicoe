@@ -549,7 +549,7 @@ function ZoomControl({ fontSize, setFontSize }: { fontSize: number; setFontSize:
 // ─── Main form ────────────────────────────────────────────────────────────────
 
 export default function FormPage() {
-  const [step, setStep]           = useState(1)
+  const [step, setStep]           = useState(2)
   const [data, setData]           = useState<FormData>(EMPTY)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
