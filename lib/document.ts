@@ -146,7 +146,10 @@ export function htmlToDocxBlocks(html: string): FileChild[] {
     // H2 section heading
     const h2 = block.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/)
     if (h2) {
-      blocks.push(sectionHeading(stripTags(h2[1])))
+      const isSectionBreak = block.includes('section-break')
+      blocks.push(isSectionBreak
+        ? sectionHeading(stripTags(h2[1]), '64748b')  // gray for divider
+        : sectionHeading(stripTags(h2[1])))            // navy for data headings
       continue
     }
 

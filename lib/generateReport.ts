@@ -150,7 +150,7 @@ function buildFallbackReport(s: Record<string, unknown>): string {
     ]),
 
     // Divider between patient and radiographer sections
-    '<p><strong>— Radiographer assessment —</strong></p>',
+    '<h2 class="section-break">Radiographer Assessment</h2>',
 
     // ── Radiographer data (filled by radiographer) ────────────────────────────
     section('DXA technical details', [

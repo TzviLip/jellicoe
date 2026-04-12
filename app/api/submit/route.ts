@@ -32,11 +32,6 @@ function validateSubmission(data: Record<string, unknown>): ValidationError[] {
   else if (data.fullName.length > 200)
     errors.push({ field: 'fullName', message: 'Full name is too long' })
 
-  if (!data.idNumber || typeof data.idNumber !== 'string' || !data.idNumber.trim())
-    errors.push({ field: 'idNumber', message: 'Patient ID is required' })
-  else if (data.idNumber.length > 50)
-    errors.push({ field: 'idNumber', message: 'Patient ID is too long' })
-
   const validTypes = [
     'Initial Assessment', 'Treatment Initiation', 'Follow-up',
     'Complex Secondary Osteoporosis', 'Drug Holiday Review',
@@ -115,19 +110,21 @@ export async function POST(req: NextRequest) {
       .insert({
         consultation_type:   data.consultationType,
         full_name:           (data.fullName as string).trim(),
-        id_number:           (data.idNumber as string).trim(),
         date_of_birth:       data.dateOfBirth || null,
         sex:                 data.sex,
         ethnicity:           data.ethnicity,
         height_cm:           data.height ? parseFloat(data.height) : null,
         weight_kg:           data.weight ? parseFloat(data.weight) : null,
         bmi,
-        fragility_fractures: data.fragilityFractures,
-        vertebral_fractures: data.vertebralFractures,
-        height_loss_cm:      data.heightLoss ? parseFloat(data.heightLoss) : null,
-        recent_fracture:     data.recentFracture,
-        additional_risks:    data.additionalRisks,
-        falls_last_year:     data.fallsCount,
+        fragility_fractures:       data.fragilityFractures,
+        vertebral_fractures:       data.vertebralFractures,
+        recent_back_pain:          data.recentBackPain,
+        first_menstrual_age:       data.firstMenstrualAge || null,
+        last_menstrual_age:        data.lastMenstrualAge  || null,
+        menstrual_interruptions_yn: data.menstrualInterruptionsYN || null,
+        menstrual_interruptions:   data.menstrualInterruptions ?? [],
+        additional_risks:          data.additionalRisks,
+        falls_last_year:           data.fallsCount,
         status:              'pending_radiographer',
         report_status:       'pending',
       })

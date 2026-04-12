@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, use } from 'react'
+import { useState, useEffect, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
@@ -259,19 +259,19 @@ export default function DoctorPatientPage({ params }: { params: Promise<{ id: st
 
   // ── Save ─────────────────────────────────────────────────────────────────────
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     setSaving(true)
+    const reportHtml   = mainReportRef.current?.innerHTML   ?? submission?.report_html   ?? ''
+    const doctorReport = doctorReportRef.current?.innerHTML ?? submission?.doctor_report ?? ''
     await fetch('/api/doctor/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: id,
-        report_html: mainReportRef.current?.innerHTML ?? submission?.report_html ?? '',
-        doctor_report: doctorReportRef.current?.innerHTML ?? '',
-      }),
+      body: JSON.stringify({ id, report_html: reportHtml, doctor_report: doctorReport }),
     })
+    // Update local state so React doesn't reset contentEditable on re-render
+    setSubmission(prev => prev ? { ...prev, report_html: reportHtml, doctor_report: doctorReport } : prev)
     setSaving(false)
-  }, [id, submission?.report_html])
+  }
 
   // ── Regenerate ───────────────────────────────────────────────────────────────
 
@@ -390,31 +390,7 @@ export default function DoctorPatientPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={handleSave}
-            disabled={saving || isGenerating}
-            className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-40"
-          >
-            {saving ? 'Saving...' : 'Save draft'}
-          </button>
-          <button
-            onClick={() => setShowEmail(true)}
-            disabled={isGenerating}
-            className="px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40"
-            style={{ backgroundColor: '#2c5282' }}
-          >
-            Email report
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={isGenerating}
-            className="px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40"
-            style={{ backgroundColor: '#1e3a5f' }}
-          >
-            Download .docx
-          </button>
-        </div>
+
       </div>
 
       {/* ── Finalised banner ─────────────────────────────────────────────────── */}
@@ -519,7 +495,20 @@ export default function DoctorPatientPage({ params }: { params: Promise<{ id: st
           </div>
           <div className="rounded-2xl border-2 border-slate-200 overflow-hidden">
             <EditorToolbar target="main-report-editor" />
-            <div
+            <style>{`
+            #main-report-editor h2.section-break {
+              color: #64748b;
+              background: #f8fafc;
+              border-bottom: 1px solid #e2e8f0;
+              border-top: 2px solid #e2e8f0;
+              padding: 8px 0;
+              margin-top: 24px;
+              font-size: 0.8em;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+            }
+          `}</style>
+          <div
               id="main-report-editor"
               ref={mainReportRef}
               contentEditable
@@ -556,17 +545,48 @@ export default function DoctorPatientPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* ── Finalise button ──────────────────────────────────────────────────── */}
-      {!finalised && (
+
+
+      {/* ── Sticky action bar ───────────────────────────────────────────────── */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex items-center gap-2 z-10">
         <button
-          onClick={handleFinalise}
-          disabled={finalising || isGenerating}
-          className="w-full py-4 rounded-xl text-white font-semibold text-base transition-all disabled:opacity-40"
+          onClick={handleSave}
+          disabled={saving || isGenerating}
+          className="px-4 py-2.5 text-sm font-medium text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-40 flex-shrink-0"
+        >
+          {saving ? 'Saving...' : 'Save draft'}
+        </button>
+        <div className="flex-1" />
+        {!finalised && (
+          <button
+            onClick={handleFinalise}
+            disabled={finalising || isGenerating}
+            className="px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
+            style={{ backgroundColor: '#475569' }}
+          >
+            {finalising ? 'Finalising...' : 'Mark as finalised'}
+          </button>
+        )}
+        <button
+          onClick={() => setShowEmail(true)}
+          disabled={isGenerating}
+          className="px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
+          style={{ backgroundColor: '#2c5282' }}
+        >
+          Email
+        </button>
+        <button
+          onClick={handleDownload}
+          disabled={isGenerating}
+          className="px-5 py-2.5 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-40 flex-shrink-0"
           style={{ backgroundColor: '#1e3a5f' }}
         >
-          {finalising ? 'Finalising...' : 'Mark as finalised'}
+          Download .docx
         </button>
-      )}
+      </div>
+
+      {/* Spacer so content isn't hidden behind sticky bar */}
+      <div className="h-16" />
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
       {showRegenerate && (
