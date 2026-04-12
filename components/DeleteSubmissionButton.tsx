@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function DeleteSubmissionButton({
   id,
@@ -10,7 +9,6 @@ export default function DeleteSubmissionButton({
   id: string
   patientName: string
 }) {
-  const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [reason, setReason]       = useState('')
   const [deleting, setDeleting]   = useState(false)
@@ -22,14 +20,19 @@ export default function DeleteSubmissionButton({
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ id, reason }),
     })
-    setDeleting(false)
     if (res.ok) {
-      setShowModal(false)
-      router.refresh()
+      // Hard reload — router.refresh() can serve a cached version with the
+      // deleted item still present, and the modal is inside a <Link> so
+      // client-side navigation would go to the deleted item's page.
+      window.location.reload()
     } else {
+      setDeleting(false)
       alert('Failed to delete. Please try again.')
     }
   }
+
+  // Stop all events from bubbling out of the modal into the parent <Link>
+  const stopProp = (e: React.MouseEvent) => e.stopPropagation()
 
   return (
     <>
@@ -46,13 +49,13 @@ export default function DeleteSubmissionButton({
 
       {showModal && (
         <div
+          onClick={stopProp}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}
         >
-          <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-xl" onClick={stopProp}>
             <h3 className="text-lg font-semibold text-slate-800 mb-1">Delete submission?</h3>
             <p className="text-sm text-slate-500 mb-5">
-              This will permanently delete <strong>{patientName}</strong>'s submission.
+              This will permanently delete <strong>{patientName}</strong>&apos;s submission.
               This action cannot be undone.
             </p>
             <label className="block text-sm font-medium text-slate-600 mb-2">
