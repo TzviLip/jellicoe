@@ -32,15 +32,6 @@ function validateSubmission(data: Record<string, unknown>): ValidationError[] {
   else if (data.fullName.length > 200)
     errors.push({ field: 'fullName', message: 'Full name is too long' })
 
-  const validTypes = [
-    'Initial Assessment', 'Treatment Initiation', 'Follow-up',
-    'Complex Secondary Osteoporosis', 'Drug Holiday Review',
-  ]
-  if (!Array.isArray(data.consultationType) || data.consultationType.length === 0)
-    errors.push({ field: 'consultationType', message: 'Consultation type is required' })
-  else if (!data.consultationType.every((t: unknown) => validTypes.includes(t as string)))
-    errors.push({ field: 'consultationType', message: 'Invalid consultation type' })
-
   if (data.dateOfBirth) {
     const dob = new Date(data.dateOfBirth as string)
     if (isNaN(dob.getTime()))
@@ -108,7 +99,6 @@ export async function POST(req: NextRequest) {
     const { data: inserted, error } = await admin
       .from('patient_submissions')
       .insert({
-        consultation_type:   data.consultationType,
         full_name:           (data.fullName as string).trim(),
         date_of_birth:       data.dateOfBirth || null,
         sex:                 data.sex,

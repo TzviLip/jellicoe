@@ -7,7 +7,6 @@ import { useState } from 'react'
 type Interruption = { duration: string }
 
 type FormData = {
-  consultationType:        string[]
   fullName:                string
   dateOfBirth:             string
   sex:                     string
@@ -26,7 +25,6 @@ type FormData = {
 }
 
 const EMPTY: FormData = {
-  consultationType:        [],
   fullName:                '',
   dateOfBirth:             '',
   sex:                     '',
@@ -45,7 +43,7 @@ const EMPTY: FormData = {
 }
 
 // Step 4 (menstrual history) is skipped for male patients
-const TOTAL_STEPS = 9
+// Consultation type is set by the radiographer, not the patient
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
@@ -172,21 +170,6 @@ function SelectInput({ label, value, onChange, options }: {
 }
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
-
-function Step1({ data, update, next }: StepProps) {
-  const options = ['Initial Assessment', 'Treatment Initiation', 'Follow-up', 'Complex Secondary Osteoporosis', 'Drug Holiday Review']
-  return (
-    <>
-      <StepTitle title="What type of consultation is this?" />
-      <div className="space-y-3">
-        {options.map(o => (
-          <OptionCard key={o} label={o} selected={data.consultationType[0] === o} onClick={() => update('consultationType', [o])} />
-        ))}
-      </div>
-      <NextButton onClick={next} disabled={data.consultationType.length === 0} />
-    </>
-  )
-}
 
 function Step2({ data, update, next, back }: StepProps) {
   return (
@@ -449,7 +432,6 @@ function StepReview({ data, back, onSubmit, submitting, goToStep }: StepProps & 
 
   // Each row is [label, value, stepToGoTo]
   const rows: [string, string, number][] = [
-    ['Consultation type',    data.consultationType.join(', '),  1],
     ['Full name',            data.fullName,                     2],
     ['Date of birth',        data.dateOfBirth,                  3],
     ['Sex',                  data.sex,                          3],
@@ -583,7 +565,7 @@ export default function FormPage() {
   const isMale = data.sex === 'Male'
 
   // Build the step sequence — skip step 4 (menstrual) for male patients
-  const steps = isMale ? [1, 2, 3, 5, 6, 7, 8, 9] : [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  const steps = isMale ? [2, 3, 5, 6, 7, 8, 9] : [2, 3, 4, 5, 6, 7, 8, 9]
   const totalVisible = steps.length
   const visibleIndex = steps.indexOf(step)
 
@@ -628,7 +610,6 @@ export default function FormPage() {
       <ZoomControl fontSize={fontSize} setFontSize={setFontSize} />
       <ProgressBar step={visibleIndex + 1} total={totalVisible} />
       <div key={step} className="animate-in fade-in slide-in-from-right-4 duration-200">
-        {step === 1 && <Step1 {...props} />}
         {step === 2 && <Step2 {...props} />}
         {step === 3 && <Step3 {...props} />}
         {step === 4 && <Step4 {...props} />}

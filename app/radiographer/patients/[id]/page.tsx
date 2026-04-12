@@ -210,6 +210,7 @@ export default function RadiograherPatient({ params }: { params: Promise<{ id: s
   const [claimWarning, setClaimWarning] = useState<string | null>(null)
 
   // Section 5 — DXA technical
+  const [consultationType, setConsultationType] = useState('')
   const [manufacturer, setManufacturer] = useState('')
   const [model, setModel] = useState('')
   const [software, setSoftware] = useState('')
@@ -274,6 +275,7 @@ export default function RadiograherPatient({ params }: { params: Promise<{ id: s
           })
           .catch(() => {})
         // Pre-fill if already started
+        setConsultationType(data.consultation_type?.[0] ?? '')
         if (data.dxa_manufacturer) setManufacturer(data.dxa_manufacturer)
         if (data.dxa_model) setModel(data.dxa_model)
         if (data.dxa_software) setSoftware(data.dxa_software)
@@ -402,12 +404,22 @@ export default function RadiograherPatient({ params }: { params: Promise<{ id: s
         </button>
         <div>
           <h1 className="text-xl font-semibold text-slate-800">{submission.full_name}</h1>
-          <p className="text-sm text-slate-500">ID: {submission.id_number} · {submission.consultation_type?.join(', ')}</p>
+          <p className="text-sm text-slate-500">ID: {submission.id_number}{consultationType ? ` · ${consultationType}` : ''}</p>
         </div>
       </div>
 
       <div className="space-y-6">
         <PatientSummary s={submission} />
+
+        {/* Consultation type */}
+        <SectionCard title="Consultation type">
+          <Select
+            label="What type of consultation is this?"
+            value={consultationType}
+            onChange={setConsultationType}
+            options={['Initial Assessment', 'Treatment Initiation', 'Follow-up', 'Complex Secondary Osteoporosis', 'Drug Holiday Review']}
+          />
+        </SectionCard>
 
         {/* Section 5: DXA technical */}
         <SectionCard title="Section 5 — DXA technical details">
