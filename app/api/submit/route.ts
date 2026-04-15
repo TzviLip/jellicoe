@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
       .from('patient_submissions')
       .insert({
         full_name:           (data.fullName as string).trim(),
+        id_number:           '',  // doctor fills this in later via radiographer portal
         date_of_birth:       data.dateOfBirth || null,
         sex:                 data.sex,
         ethnicity:           data.ethnicity,
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
         status:              'pending_radiographer',
         report_status:       'pending',
       })
-      .select('id, full_name, id_number')
+      .select('id, full_name')
       .single()
 
     if (error) {
@@ -159,12 +160,9 @@ export async function POST(req: NextRequest) {
                 <td style="padding:8px 0;color:#64748b;font-size:14px;border-bottom:1px solid #f1f5f9">Patient</td>
                 <td style="padding:8px 0;font-weight:600;font-size:14px;border-bottom:1px solid #f1f5f9">${inserted.full_name}</td>
               </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748b;font-size:14px">Patient ID</td>
-                <td style="padding:8px 0;font-size:14px">${inserted.id_number}</td>
-              </tr>
+
             </table>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/radiographer/patients/${inserted.id}"
+            <a href="${appUrl(`/radiographer/patients/${inserted.id}`)}"
                style="display:inline-block;background:#1e3a5f;color:white;text-decoration:none;
                       padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">
               Open patient record
