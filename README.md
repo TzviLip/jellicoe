@@ -6,7 +6,7 @@
 Go to supabase.com → New project.
 
 ### 2. Run the database schema
-Open `supabase-schema-COMPLETE.sql` → copy the entire file →
+Open `supabase-schema.sql` → copy the entire file →
 Supabase dashboard → SQL Editor → New query → paste → Run.
 
 This is the only time you ever need to use the Supabase SQL Editor.
